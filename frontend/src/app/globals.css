@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-dark-bg: #05030a;
+  --color-panel-bg: rgba(13, 8, 22, 0.65);
+  --color-panel-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #a78bfa;
+  --color-accent-purple: #8b5cf6;
+  --color-accent-copper: #d97706;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+@layer base {
+  :root {
+    --background: #05030a;
+    --foreground: #f8fafc;
+  }
+  
+  body {
+    background-color: var(--background);
+    background-image: 
+      radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.12), transparent 30%),
+      radial-gradient(circle at 85% 30%, rgba(217, 119, 6, 0.08), transparent 30%);
+    background-attachment: fixed;
+    color: var(--foreground);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-[rgba(17,24,39,0.65)] backdrop-blur-xl border border-[rgba(255,255,255,0.08)] rounded-2xl shadow-xl transition-all duration-300 p-6;
+  }
+  
+  .glass-panel:hover {
+    @apply border-[rgba(255,255,255,0.12)] shadow-2xl;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-all duration-200 text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .btn-primary {
+    @apply bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 hover:-translate-y-0.5 border border-purple-400/20;
+  }
+
+  .btn-success {
+    @apply bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 hover:text-emerald-300;
+  }
+
+  .btn-danger {
+    @apply bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600/30 hover:text-rose-300;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider;
+  }
+
+  .badge-pending {
+    @apply bg-amber-500/10 text-amber-400 border border-amber-500/20;
+  }
+
+  .badge-new {
+    @apply bg-blue-500/10 text-blue-400 border border-blue-500/20;
+  }
+
+  .badge-contacted {
+    @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
+  }
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

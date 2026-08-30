@@ -1,0 +1,28 @@
+# Environment variables (SECURITY RISK)
+.env
+.env.*
+!.env.example
+!.env.template
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Node modules (just in case they are at root)
+node_modules/
+
+# Logs
+*.log

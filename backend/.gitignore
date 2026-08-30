@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build Output
+dist/
+build/
+
+# Environment variables (SECURITY RISK - NEVER COMMIT)
+.env
+.env.test
+.env.production
+.env.local
+.env.development
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+
+# NestJS specific
+.nest/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Caching
+.npm
+.eslintcache
+.tsbuildinfo

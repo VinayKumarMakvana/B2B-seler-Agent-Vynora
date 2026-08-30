@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-vynora}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-vynora_secret}
+      POSTGRES_DB: ${DB_NAME:-vynora}
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - vynora_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-vynora}
+      - DB_PASSWORD=${DB_PASSWORD:-vynora_secret}
+      - DB_NAME=${DB_NAME:-vynora}
+      - DATABASE_URL=postgres://${DB_USER:-vynora}:${DB_PASSWORD:-vynora_secret}@db:5432/${DB_NAME:-vynora}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+    depends_on:
+      - db
+      - mailhog
+    networks:
+      - vynora_network
+    # Required for reaching Ollama on the host machine from inside the container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=${API_URL:-http://localhost:3001}
+    depends_on:
+      - backend
+    networks:
+      - vynora_network
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP Port
+      - "8025:8025" # Web UI Port
+    networks:
+      - vynora_network
+
+volumes:
+  db_data:
+
+networks:
+  vynora_network:
+    driver: bridge
