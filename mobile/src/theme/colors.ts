@@ -1,0 +1,17 @@
+export const colors = {
+  background: '#05030a',
+  surface: 'rgba(147, 51, 234, 0.05)',
+  surfaceBorder: 'rgba(168, 85, 247, 0.2)',
+  textPrimary: '#ffffff',
+  textSecondary: '#a1a1aa',
+  primary: '#a855f7',
+  accent: '#f97316',
+  accentHover: '#ea580c',
+  success: '#9333ea',
+  successBg: 'rgba(147, 51, 234, 0.2)',
+  warning: '#f97316',
+  warningBg: 'rgba(249, 115, 22, 0.2)',
+  danger: '#e11d48',
+  dangerBg: 'rgba(225, 29, 72, 0.2)',
+  badgeContactedBg: 'rgba(168, 85, 247, 0.2)',
+};

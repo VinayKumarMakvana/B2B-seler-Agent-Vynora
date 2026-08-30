@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+/android/
+/ios/
+
+# Environment variables (SECURITY RISK - NEVER COMMIT)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+!.env.example
+
+# Keystores & Certificates (SECURITY RISK - NEVER COMMIT)
+*.jks
+*.p8
+*.p12
+*.key
+*.keystore
+*.mobileprovision
+*.pem
+
+# Debug / Logs
+npm-debug.*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.orig.*
