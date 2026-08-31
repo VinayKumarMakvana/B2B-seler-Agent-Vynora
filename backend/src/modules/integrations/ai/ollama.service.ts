@@ -38,9 +38,34 @@ export class OllamaService {
     while (attempt < maxRetries) {
       attempt++;
       try {
+        let useGeminiFallback = false;
         let responseJsonStr = '';
 
-        if (this.aiState.model === 'gemini') {
+        if (this.aiState.model === 'ollama') {
+          try {
+            const res = await fetch(`${this.baseUrl}/api/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: this.model,
+                prompt: fullPrompt,
+                stream: false,
+                format: 'json',
+              }),
+              signal: AbortSignal.timeout(5000),
+            });
+
+            if (!res.ok) throw new Error(`Ollama API failed: ${res.statusText}`);
+            const data = await res.json();
+            responseJsonStr = data.response;
+          } catch (err: any) {
+            this.logger.warn(`Ollama failed (${err.message}). Auto-switching to Gemini!`);
+            this.aiState.setModel('gemini');
+            useGeminiFallback = true;
+          }
+        }
+
+        if (this.aiState.model === 'gemini' || useGeminiFallback) {
           const apiKey = this.configService.get<string>('GEMINI_API_KEY');
           if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
@@ -57,23 +82,6 @@ export class OllamaService {
           if (!res.ok) throw new Error(`Gemini API failed: ${res.statusText}`);
           const data = await res.json();
           responseJsonStr = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        } else {
-          // Ollama
-          const res = await fetch(`${this.baseUrl}/api/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: this.model,
-              prompt: fullPrompt,
-              stream: false,
-              format: 'json',
-            }),
-            signal: AbortSignal.timeout(5000),
-          });
-
-          if (!res.ok) throw new Error(`Ollama API failed: ${res.statusText}`);
-          const data = await res.json();
-          responseJsonStr = data.response;
         }
         
         let parsedContent;
