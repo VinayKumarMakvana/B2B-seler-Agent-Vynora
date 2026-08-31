@@ -5,6 +5,8 @@ import { FollowupGeneratorService } from './followup-generator.service';
 import { Lead, LeadState } from '../../crm/entities/lead.entity';
 import { Approval, ApprovalStatus } from '../../crm/entities/approval.entity';
 
+import { EmailService } from '../../integrations/email/email.service';
+
 @Injectable()
 export class FollowupOrchestratorService {
   private readonly logger = new Logger(FollowupOrchestratorService.name);
@@ -14,6 +16,7 @@ export class FollowupOrchestratorService {
 
   constructor(
     private readonly generator: FollowupGeneratorService,
+    private readonly emailService: EmailService,
     @InjectRepository(Lead) private leadRepo: Repository<Lead>,
     @InjectRepository(Approval) private approvalRepo: Repository<Approval>,
   ) {}
@@ -63,21 +66,20 @@ export class FollowupOrchestratorService {
 
     const bumpText = await this.generator.generateBump(context, followUpNumber);
 
-    // Fail closed: Always require manual approval for follow-ups to prevent runaway loops
-    await this.approvalRepo.save(this.approvalRepo.create({
-      entityType: 'lead_followup',
-      entityId: lead.id,
-      requestedAction: 'send_followup',
-      proposedContent: { bumpText, followUpNumber },
-      aiReasoning: `Generated follow-up #${followUpNumber} due to 72h silence`,
-      status: ApprovalStatus.PENDING,
-      riskLevel: 'medium'
-    }));
-    
-    // Advance state to reflect it has entered the follow-up bucket
-    lead.status = nextState;
-    await this.leadRepo.save(lead);
+    // Fully Autonomous Auto-Send Logic
+    this.logger.log(`Auto-sending follow-up #${followUpNumber} for Lead ${lead.id}`);
+    try {
+      const toEmail = lead.contact?.email;
+      if (toEmail) {
+        await this.emailService.sendEmail(toEmail, `Following up: ${context.companyName || 'Vynora'}`, bumpText);
+        lead.status = nextState;
+      } else {
+        this.logger.warn(`Lead ${lead.id} has no contact email. Cannot auto-send.`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to auto-send email to Lead ${lead.id}`, error);
+    }
 
-    this.logger.log(`Created PENDING approval for Lead ${lead.id} follow-up #${followUpNumber}.`);
+    await this.leadRepo.save(lead);
   }
 }

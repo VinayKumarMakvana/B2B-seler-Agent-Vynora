@@ -5,15 +5,15 @@ import { OutreachGeneratorService } from './outreach-generator.service';
 import { Lead, LeadState } from '../../crm/entities/lead.entity';
 import { Approval, ApprovalStatus } from '../../crm/entities/approval.entity';
 
+import { EmailService } from '../../integrations/email/email.service';
+
 @Injectable()
 export class OutreachOrchestratorService {
   private readonly logger = new Logger(OutreachOrchestratorService.name);
-  
-  // Configuration for auto-send threshold
-  private readonly AUTO_SEND_THRESHOLD = 9;
 
   constructor(
     private readonly outreachGenerator: OutreachGeneratorService,
+    private readonly emailService: EmailService,
     @InjectRepository(Lead) private leadRepo: Repository<Lead>,
     @InjectRepository(Approval) private approvalRepo: Repository<Approval>,
   ) {}
@@ -47,23 +47,18 @@ export class OutreachOrchestratorService {
       return;
     }
 
-    // Enforce Fail-Closed / Auto-Send Logic
-    if (lead.priorityScore && lead.priorityScore >= this.AUTO_SEND_THRESHOLD) {
-      // Concrete sending logic via EmailProviderService would go here
-      this.logger.log(`Auto-sending outreach for high-priority Lead ${leadId}`);
-      lead.status = LeadState.CONTACTED;
-    } else {
-      // Require manual approval
-      await this.approvalRepo.save(this.approvalRepo.create({
-        entityType: 'lead_outreach',
-        entityId: lead.id,
-        requestedAction: 'send_initial_hook',
-        proposedContent: { hookText },
-        aiReasoning: `Generated initial hook based on priority score ${lead.priorityScore}`,
-        status: ApprovalStatus.PENDING,
-        riskLevel: 'high'
-      }));
-      this.logger.log(`Created PENDING approval for Lead ${leadId} outreach.`);
+    // Fully Autonomous Auto-Send Logic
+    this.logger.log(`Auto-sending outreach for Lead ${leadId}`);
+    try {
+      const toEmail = lead.contact?.email;
+      if (toEmail) {
+        await this.emailService.sendEmail(toEmail, 'A brief question about your process', hookText);
+        lead.status = LeadState.CONTACTED;
+      } else {
+        this.logger.warn(`Lead ${lead.id} has no contact email. Cannot auto-send.`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to auto-send email to Lead ${lead.id}`, error);
     }
 
     await this.leadRepo.save(lead);
