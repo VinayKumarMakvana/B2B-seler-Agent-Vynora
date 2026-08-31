@@ -13,13 +13,18 @@ export class WorkerService implements OnModuleInit {
     // Domain specific workers (e.g., FollowupWorker) handle specific job types
   }
 
-  private async startWorker(jobType: string, handler: (payload: any) => Promise<void>, pollInterval = 5000) {
+  private async startWorker(jobType: string, handler: (payload: any) => Promise<void>) {
     if (process.env.DISABLE_WORKERS === 'true') {
       this.logger.warn(`Worker disabled for job type: ${jobType}`);
       return;
     }
 
-    this.logger.log(`Starting worker loop for job type: ${jobType}`);
+    // LAPTOP WINS RACE CONDITION: 
+    // Laptop checks every 2 seconds, Cloud checks every 10 seconds.
+    // If laptop is ON, it steals the job and uses free Ollama!
+    const pollInterval = process.env.NODE_ENV === 'production' ? 10000 : 2000;
+
+    this.logger.log(`Starting worker loop for job type: ${jobType} (Interval: ${pollInterval}ms)`);
     
     while (!this.isShuttingDown) {
       try {

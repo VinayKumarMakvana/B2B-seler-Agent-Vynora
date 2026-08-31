@@ -38,7 +38,8 @@ export class DiscoveryWorker implements OnModuleInit {
           await this.discoveryService.runDiscovery(searchTerm, location);
           await this.jobService.completeJob(job.id);
         } else {
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          const pollInterval = process.env.NODE_ENV === 'production' ? 10000 : 2000;
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
         }
       } catch (error: any) {
         this.logger.error('Worker error', error);
