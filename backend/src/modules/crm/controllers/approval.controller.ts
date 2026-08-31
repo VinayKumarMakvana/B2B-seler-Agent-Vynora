@@ -7,6 +7,7 @@ import { Message, MessageDirection } from '../entities/message.entity';
 import { RolesGuard } from '../../auth/roles.guard';
 import { Roles, Role } from '../../auth/roles.decorator';
 import { EmailService } from '../../integrations/email/email.service';
+import { OllamaService } from '../../integrations/ai/ollama.service';
 
 @Controller('api/v1/approvals')
 @UseGuards(RolesGuard)
@@ -18,6 +19,7 @@ export class ApprovalController {
     @InjectRepository(Lead) private leadRepo: Repository<Lead>,
     @InjectRepository(Message) private messageRepo: Repository<Message>,
     private readonly emailService: EmailService,
+    private readonly ollamaService: OllamaService,
   ) {}
 
   @Get()
@@ -96,5 +98,70 @@ export class ApprovalController {
     
     await this.approvalRepo.save(approval);
     return { status: 'rejected', approval };
+  }
+
+  @Post(':id/execute-action')
+  @Roles(Role.OWNER, Role.ADMIN)
+  async executeAction(@Param('id') id: string, @Body() payload: any) {
+    const approval = await this.approvalRepo.findOne({ where: { id } });
+    if (!approval) throw new NotFoundException('Approval not found');
+    if (approval.status !== ApprovalStatus.PENDING) throw new BadRequestException('Approval is not pending');
+
+    const lead = await this.leadRepo.findOne({ 
+      where: { id: approval.entityId },
+      relations: { contact: true, company: true } 
+    });
+
+    if (!lead || !lead.contact?.email) {
+      throw new BadRequestException('Lead or contact email not found');
+    }
+
+    // Agentic formatting of raw data
+    const prompt = `
+      You are an Elite B2B Consultative Sales Director.
+      Your manager has provided the following raw notes to reply to a prospect.
+      Turn these rough notes into a highly professional, concise, and persuasive email.
+      Do not invent features or prices. Do not use generic openers.
+      
+      Action Required: ${approval.requestedAction}
+      Prospect Message: "${approval.proposedContent?.clientMessage || 'N/A'}"
+      Manager's Raw Notes: ${JSON.stringify(payload)}
+      
+      Respond with ONLY the final email body.
+    `;
+
+    try {
+      const finalEmailBody = await this.ollamaService.generateText(prompt);
+
+      const subject = approval.requestedAction === 'provide_meeting_details'
+        ? `Meeting Details - ${lead.company?.name || 'Vynora'}`
+        : `Proposal for ${lead.company?.name || 'Vynora'}`;
+
+      await this.emailService.sendEmail(lead.contact.email, subject, finalEmailBody);
+
+      // Log in CRM messages table
+      await this.messageRepo.save(this.messageRepo.create({
+        lead: lead,
+        direction: MessageDirection.OUTBOUND,
+        content: finalEmailBody,
+        channel: 'email',
+      }));
+
+      // If it was a proposal, update lead state
+      if (approval.requestedAction === 'provide_proposal') {
+        lead.status = LeadState.PROPOSAL_SENT;
+        await this.leadRepo.save(lead);
+      }
+
+      approval.status = ApprovalStatus.APPROVED;
+      approval.approvedBy = 'system_owner';
+      await this.approvalRepo.save(approval);
+
+      this.logger.log(`Agent executed action ${approval.requestedAction} and sent formatted email to ${lead.contact.email}`);
+      return { status: 'executed', emailSent: true };
+    } catch (e: any) {
+      this.logger.error(`Failed to execute action for approval ${approval.id}`, e);
+      throw new BadRequestException('Failed to format and send email: ' + e.message);
+    }
   }
 }

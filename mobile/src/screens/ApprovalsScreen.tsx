@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { GlassPanel } from '../components/GlassPanel';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { EmptyState } from '../components/EmptyState';
 export function ApprovalsScreen() {
   const [negotiations, setNegotiations] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [formData, setFormData] = useState<Record<string, any>>({});
 
   const fetchNegotiations = async () => {
     try {
@@ -31,13 +32,39 @@ export function ApprovalsScreen() {
     fetchNegotiations();
   }, []);
 
-  const handleApprove = async (id: string) => {
+  const handleInputChange = (id: string, field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || {}),
+        [field]: value
+      }
+    }));
+  };
+
+  const handleExecuteAction = async (id: string, requestedAction: string) => {
+    const data = formData[id] || {};
+    
+    if (requestedAction === 'provide_meeting_details' && (!data.time || !data.link)) {
+      Alert.alert('Required', 'Please provide both meeting time and link.');
+      return;
+    }
+    if (requestedAction === 'provide_proposal' && (!data.price || !data.scope)) {
+      Alert.alert('Required', 'Please provide both price and scope.');
+      return;
+    }
+
     try {
-      await fetch(`${config.API_URL}/approvals/${id}/approve`, { method: 'POST' });
+      await fetch(`${config.API_URL}/approvals/${id}/execute-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
       setNegotiations(prev => prev.filter(n => n.id !== id));
-      Alert.alert('Approved', `AI actions approved for execution!`);
+      Alert.alert('Executed', `Agent is drafting the email and sending it!`);
     } catch (e) {
       console.error(e);
+      Alert.alert('Error', 'Failed to execute action');
     }
   };
 
@@ -51,6 +78,67 @@ export function ApprovalsScreen() {
     }
   };
 
+  const renderActionForm = (item: any) => {
+    const data = formData[item.id] || {};
+    
+    if (item.requestedAction === 'provide_meeting_details') {
+      return (
+        <View style={styles.formContainer}>
+          <Text style={styles.formTitle}>Provide Meeting Details</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="E.g., Tomorrow at 2 PM EST" 
+            placeholderTextColor="#888"
+            value={data.time || ''}
+            onChangeText={(v) => handleInputChange(item.id, 'time', v)}
+          />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Meeting Link (Google Meet/Zoom)" 
+            placeholderTextColor="#888"
+            value={data.link || ''}
+            onChangeText={(v) => handleInputChange(item.id, 'link', v)}
+          />
+        </View>
+      );
+    }
+
+    if (item.requestedAction === 'provide_proposal') {
+      const budget = item.proposedContent?.extractedBudget || 'Unknown';
+      return (
+        <View style={styles.formContainer}>
+          <View style={styles.insightBox}>
+             <Text style={styles.insightLabel}>CLIENT BUDGET</Text>
+             <Text style={styles.insightText}>{budget}</Text>
+          </View>
+          <Text style={styles.formTitle}>Define Proposal Scope</Text>
+          <TextInput 
+            style={styles.input} 
+            placeholder="Price (e.g., $1,500/mo)" 
+            placeholderTextColor="#888"
+            value={data.price || ''}
+            onChangeText={(v) => handleInputChange(item.id, 'price', v)}
+          />
+          <TextInput 
+            style={[styles.input, { height: 80 }]} 
+            placeholder="Scope of work (Bullet points)" 
+            placeholderTextColor="#888"
+            multiline
+            value={data.scope || ''}
+            onChangeText={(v) => handleInputChange(item.id, 'scope', v)}
+          />
+        </View>
+      );
+    }
+
+    // Default fallback
+    return (
+      <Text style={styles.scopeText} numberOfLines={2}>
+        {item.proposedContent?.hookText || item.proposedContent?.bumpText || JSON.stringify(item.proposedContent)}
+      </Text>
+    );
+  };
+
   const renderItem = ({ item }: { item: any }) => (
     <GlassPanel style={styles.card} intensity={30}>
       <View style={styles.headerRow}>
@@ -58,36 +146,37 @@ export function ApprovalsScreen() {
            <View style={styles.iconCircle}>
               <Ionicons name="flash" size={18} color={colors.accent} />
            </View>
-           <Text style={styles.companyName}>{item.entityType?.replace(/_/g, ' ').toUpperCase() || 'PROPOSAL'}</Text>
+           <Text style={styles.companyName}>
+             {item.requestedAction === 'provide_meeting_details' ? 'MEETING REQUEST' : 
+              item.requestedAction === 'provide_proposal' ? 'PROPOSAL REQUEST' : 
+              'ACTION REQUIRED'}
+           </Text>
         </View>
         <View style={styles.badgeRisk}>
-          <Text style={styles.badgeRiskText}>{item.riskLevel || 'HIGH'} RISK</Text>
+          <Text style={styles.badgeRiskText}>URGENT</Text>
         </View>
       </View>
 
-      <View style={styles.insightBox}>
-         <Text style={styles.insightLabel}>AI REASONING</Text>
-         <Text style={styles.insightText} numberOfLines={3}>{item.aiReasoning || "No reasoning provided."}</Text>
-      </View>
-
-      <Text style={styles.scopeText} numberOfLines={2}>
-        {item.proposedContent?.hookText || item.proposedContent?.bumpText || JSON.stringify(item.proposedContent)}
+      <Text style={styles.clientMessageText} numberOfLines={4}>
+        "{item.proposedContent?.clientMessage || 'System action required'}"
       </Text>
+
+      {renderActionForm(item)}
       
       <View style={styles.actionRow}>
         <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(item.id)}>
           <Text style={styles.rejectText}>Reject</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.approveBtnContainer} onPress={() => handleApprove(item.id)}>
+        <TouchableOpacity style={styles.approveBtnContainer} onPress={() => handleExecuteAction(item.id, item.requestedAction)}>
           <LinearGradient
             colors={['#9333ea', '#4f46e5']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.approveGradient}
           >
-            <Text style={styles.approveText}>Approve & Execute</Text>
-            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.approveText}>Format & Send</Text>
+            <Ionicons name="send" size={16} color="#fff" />
           </LinearGradient>
         </TouchableOpacity>
       </View>
@@ -95,7 +184,7 @@ export function ApprovalsScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
       <FlatList
         data={negotiations}
         keyExtractor={item => item.id}
@@ -106,11 +195,11 @@ export function ApprovalsScreen() {
           <EmptyState 
             icon="checkmark-done-circle-outline" 
             title="Inbox Zero!" 
-            description="No pending approvals. AI is waiting for new triggers." 
+            description="Agent is handling all communications autonomously." 
           />
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -143,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   companyName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
     color: '#fff',
     letterSpacing: 1,
@@ -163,7 +252,7 @@ const styles = StyleSheet.create({
   },
   insightBox: {
     backgroundColor: 'rgba(5, 3, 10, 0.6)',
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
     borderLeftWidth: 3,
     borderLeftColor: colors.primary,
@@ -177,16 +266,44 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   insightText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#10b981', // Green for money
+  },
+  clientMessageText: {
+    fontSize: 15,
+    color: '#e2e8f0',
+    marginBottom: 16,
+    fontStyle: 'italic',
+    lineHeight: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    padding: 12,
+    borderRadius: 8,
   },
   scopeText: {
     fontSize: 15,
     color: '#e2e8f0',
     marginBottom: 20,
-    fontStyle: 'italic',
-    lineHeight: 22,
+  },
+  formContainer: {
+    marginBottom: 20,
+  },
+  formTitle: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    color: '#fff',
+    padding: 12,
+    marginBottom: 12,
+    fontSize: 14,
   },
   actionRow: {
     flexDirection: 'row',
@@ -224,35 +341,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '900',
     fontSize: 14,
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 100,
-  },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(168, 85, 247, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(168, 85, 247, 0.3)',
-  },
-  emptyTitle: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-    lineHeight: 20,
   }
 });

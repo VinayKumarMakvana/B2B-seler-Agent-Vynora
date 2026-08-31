@@ -11,6 +11,8 @@ import { NotificationsGateway } from '../../notifications/notifications.gateway'
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { EmailService } from '../../integrations/email/email.service';
+
 @Injectable()
 export class ResponseOrchestratorService {
   private readonly logger = new Logger(ResponseOrchestratorService.name);
@@ -18,6 +20,7 @@ export class ResponseOrchestratorService {
   constructor(
     private readonly intentClassifier: IntentClassifierService,
     private readonly draftGenerator: DraftGeneratorService,
+    private readonly emailService: EmailService,
     @InjectRepository(Message) private messageRepo: Repository<Message>,
     @InjectRepository(Approval) private approvalRepo: Repository<Approval>,
     @InjectRepository(Lead) private leadRepo: Repository<Lead>,
@@ -94,27 +97,55 @@ export class ResponseOrchestratorService {
       this.logger.log(`Lead ${lead.id} transitioned to ${nextState}`);
     }
 
-    // 5. Generate Draft
-    const draftText = await this.draftGenerator.generateDraft(intent, content, {
-      companyName: "Vynora", 
-      leadState: lead.status,
-      opportunityValueUsd: lead.opportunity?.valueUsd || 30000.00 
-    });
-
-    // 6. Create Approval Request (Mandatory human review before send)
-    if (draftText) {
+    // 5. Action Routing based on Intent
+    if (intent === ProspectIntent.MEETING_REQUEST) {
+      // Handoff: Meeting Details Required
       await this.approvalRepo.save(this.approvalRepo.create({
         entityType: 'message',
-        entityId: message.id, // Links draft to inbound message context
-        requestedAction: 'send_reply',
-        proposedContent: { draftText },
-        aiReasoning: `Intent classified as: ${intent}`,
+        entityId: message.id,
+        requestedAction: 'provide_meeting_details',
+        proposedContent: { clientMessage: content },
+        aiReasoning: `Client requested a meeting. Human needs to provide time/link.`,
         status: ApprovalStatus.PENDING,
-        riskLevel: 'medium' // Standard reply risk
+        riskLevel: 'medium'
       }));
-      this.logger.log(`Created pending approval for drafted reply to Lead ${lead.id}`);
+      this.logger.log(`Created handoff approval: provide_meeting_details for Lead ${lead.id}`);
+      
+    } else if (intent === ProspectIntent.REQUIREMENTS_SHARED || intent === ProspectIntent.PRICING_REQUEST) {
+      // Handoff: Proposal Details Required
+      // Try to extract rough budget from text using simple regex or just pass text to human
+      const roughBudget = content.match(/\\$?\\d{2,3}[kK]?|\\d+\\s*(?:dollars|usd)/i)?.[0] || 'Unknown';
+      
+      await this.approvalRepo.save(this.approvalRepo.create({
+        entityType: 'message',
+        entityId: message.id,
+        requestedAction: 'provide_proposal',
+        proposedContent: { clientMessage: content, extractedBudget: roughBudget },
+        aiReasoning: `Client shared requirements/pricing request. Human needs to define Scope and Price.`,
+        status: ApprovalStatus.PENDING,
+        riskLevel: 'high'
+      }));
+      this.logger.log(`Created handoff approval: provide_proposal for Lead ${lead.id}`);
+      
     } else {
-      this.logger.warn(`Draft generation failed for Lead ${lead.id}. Manual review required.`);
+      // Autonomous Execution for standard replies (INTERESTED, QUESTION, OBJECTION)
+      const draftText = await this.draftGenerator.generateDraft(intent, content, {
+        companyName: "Vynora", 
+        leadState: lead.status,
+        opportunityValueUsd: lead.opportunity?.valueUsd || 30000.00 
+      });
+
+      if (draftText && lead.contact?.email) {
+        this.logger.log(`Autonomously replying to Lead ${lead.id} for intent: ${intent}`);
+        try {
+          // Assuming emailService is injected (need to inject it!)
+          await this.emailService.sendEmail(lead.contact.email, `Re: Following up`, draftText);
+        } catch (e) {
+          this.logger.error(`Failed to auto-send reply to Lead ${lead.id}`, e);
+        }
+      } else {
+        this.logger.warn(`Draft generation failed or no email for Lead ${lead.id}.`);
+      }
     }
   }
 }

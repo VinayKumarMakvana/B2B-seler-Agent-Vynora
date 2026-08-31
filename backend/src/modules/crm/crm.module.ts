@@ -12,10 +12,10 @@ import { LeadController } from './controllers/lead.controller';
 import { ApprovalController } from './controllers/approval.controller';
 import { AnalyticsController } from './controllers/analytics.controller';
 
-import { EmailModule } from '../integrations/email/email.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, Contact, Lead, Opportunity, Message, Approval, Invoice]), EmailModule],
+  imports: [TypeOrmModule.forFeature([Company, Contact, Lead, Opportunity, Message, Approval, Invoice]), IntegrationsModule],
   controllers: [LeadController, ApprovalController, AnalyticsController],
   providers: [LeadStateMachineService],
   exports: [TypeOrmModule, LeadStateMachineService],
